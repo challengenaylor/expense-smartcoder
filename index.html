@@ -265,6 +265,7 @@
      your other tools.
      =================================================================== -->
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
 <script>
   const firebaseConfig = {
@@ -276,11 +277,51 @@
     appId: "1:10647816245:web:fbfb982260cf2eef97097c"
   };
   firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
   const db = firebase.firestore();
   const smartCoderDocRef = db.collection("smartCoderApp").doc("main");
+  const REQUIRED_TOOL_KEY = "expenses";
 </script>
+<style>
+  #authGate{
+    position:fixed; inset:0; background:#F5F6FB; z-index:5000;
+    display:flex; align-items:center; justify-content:center;
+  }
+  #authGate .box{
+    width:100%; max-width:360px; background:#fff; border:1px solid #E3E6EF;
+    border-radius:10px; padding:30px 26px; text-align:center; font-family:sans-serif;
+  }
+  #authGate h2{margin:0 0 6px; font-size:1.2rem; color:#12141C;}
+  #authGate p{margin:0 0 20px; font-size:.85rem; color:#6B7280;}
+  #authGate input{
+    width:100%; padding:10px 12px; margin-bottom:10px; border:1px solid #E3E6EF;
+    border-radius:6px; font-size:.9rem; box-sizing:border-box;
+  }
+  #authGate button{
+    width:100%; padding:11px; background:#6D5EF5; color:#fff; border:none;
+    border-radius:6px; font-weight:700; cursor:pointer; margin-top:4px;
+  }
+  #authGate .msg{font-size:.8rem; margin-top:12px; color:#E0362C;}
+  #logoutCorner{
+    position:fixed; bottom:14px; left:14px; z-index:900; font-size:11px;
+    background:#fff; border:1px solid #E3E6EF; padding:5px 10px; border-radius:20px;
+    color:#6B7280; cursor:pointer;
+  }
+</style>
 </head>
 <body class="p-4 md:p-8">
+<div id="authGate">
+  <div class="box">
+    <h2>Sign in</h2>
+    <p>Enter your login to access Expense SmartCoder.</p>
+    <input type="email" id="gateEmail" placeholder="Email">
+    <input type="password" id="gatePassword" placeholder="Password">
+    <button id="gateBtn">Sign in</button>
+    <div class="msg" id="gateMsg"></div>
+  </div>
+</div>
+<div id="logoutCorner" style="display:none;">Log out</div>
+<div id="appWrap" style="display:none;">
     <div class="max-w-7xl mx-auto">
 
         <header class="mb-6 flex justify-between items-center flex-wrap gap-4">
@@ -415,6 +456,55 @@
             </div>
         </div>
     </div>
+    </div><!-- /#appWrap -->
+
+    <script>
+        const gateEmail = document.getElementById('gateEmail');
+        const gatePassword = document.getElementById('gatePassword');
+        const gateMsg = document.getElementById('gateMsg');
+        const authGate = document.getElementById('authGate');
+        const logoutCorner = document.getElementById('logoutCorner');
+        const appWrap = document.getElementById('appWrap');
+
+        document.getElementById('gateBtn').addEventListener('click', async () => {
+            gateMsg.textContent = '';
+            try {
+                await auth.signInWithEmailAndPassword(gateEmail.value.trim(), gatePassword.value);
+            } catch (e) {
+                gateMsg.textContent = 'Incorrect email or password.';
+            }
+        });
+        logoutCorner.addEventListener('click', () => auth.signOut());
+
+        let appHasStarted = false;
+        auth.onAuthStateChanged(async (user) => {
+            if (!user) {
+                authGate.style.display = 'flex';
+                logoutCorner.style.display = 'none';
+                appWrap.style.display = 'none';
+                return;
+            }
+            let allowed = false;
+            try {
+                const snap = await db.collection('users').doc(user.uid).get();
+                if (snap.exists) {
+                    const data = snap.data();
+                    allowed = data.role === 'admin' || (data.tools || []).includes(REQUIRED_TOOL_KEY);
+                }
+            } catch (e) { console.error(e); }
+
+            if (!allowed) {
+                gateMsg.textContent = "You don't have access to this tool.";
+                auth.signOut();
+                return;
+            }
+
+            authGate.style.display = 'none';
+            logoutCorner.style.display = 'block';
+            appWrap.style.display = 'block';
+            if (!appHasStarted) { appHasStarted = true; init(); }
+        });
+    </script>
 
     <script>
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -998,7 +1088,7 @@
             calculateTotals();
         }
 
-        init();
+        // init() is now triggered automatically once login + access are confirmed (see auth gate script above).
     </script>
 </body>
 </html>
